@@ -23,6 +23,7 @@ import { clusterUrl, getConfig } from './config';
 dotenv.config();
 
 async function runLiquidator() {
+  const startTime = Date.now();
   const marketAddress = process.env.MARKET;
   if (!marketAddress) {
     throw new Error('no process.env.MARKET provided');
@@ -44,10 +45,20 @@ async function runLiquidator() {
   `);
 
   for (let epoch = 0; ; epoch += 1) {
+    console.log(`epoch: ${epoch} - time:  ${Date.now() - startTime}`);
     const tokensOracle = await getTokensOracleData(connection, config, reserves);
-    const allObligations = await getObligations(connection, config, lendingMarketPubKey);
-    const allReserves = await getReserves(connection, config, lendingMarketPubKey);
+    console.log('tokensOracle sample: ', tokensOracle[0]);
+    console.log('tokensOracles fetched - time: ', Date.now() - startTime);
 
+    const allObligations = await getObligations(connection, config, lendingMarketPubKey);
+    console.log('obligation sample: ', allObligations[0]);
+    console.log('Obligation count: ', allObligations.length, ' - time: ', Date.now() - startTime);
+
+    const allReserves = await getReserves(connection, config, lendingMarketPubKey);
+    console.log('reserve sample: ', allReserves[0]);
+    console.log('Reserves count: ', allReserves.length, ' - time ', Date.now() - startTime);
+
+    let healthyObligationCount = 0;
     for (let obligation of allObligations) {
       try {
         while (obligation) {
@@ -64,6 +75,8 @@ async function runLiquidator() {
 
           // Do nothing if obligation is healthy
           if (borrowedValue.isLessThanOrEqualTo(unhealthyBorrowValue)) {
+            // console.log(`obligation is healthy: `, obligation.account.owner);
+            healthyObligationCount += 1;
             break;
           }
 
@@ -128,8 +141,12 @@ async function runLiquidator() {
       }
     }
 
+    console.log('All obligation count: ', allObligations.length, ' - time: ', Date.now() - startTime);
+    console.log('Healthy obligation count: ', healthyObligationCount, ' - time: ', Date.now() - startTime);
+
     // check if collateral redeeming is required
     const collateralBalances = await getCollateralBalances(connection, config, payer, reserves);
+    console.log('collateralBalances: ', collateralBalances);
     collateralBalances.forEach(({ balanceBase, symbol }) => {
       if (balanceBase > 0) {
         redeemCollateral(connection, config, payer, balanceBase.toString(), symbol, lendingMarkets);
