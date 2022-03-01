@@ -104,6 +104,18 @@ function stripEnd(s: string, c: string) {
   return s.slice(0, i + 1);
 }
 
+async function retry(fn, maxAttempts: number = 1) {
+  let retryCounter = 0;
+  while (retryCounter < maxAttempts) {
+    try {
+      return await fn();
+    } catch {
+      retryCounter += 1;
+      continue;
+    }
+  }
+}
+
 export async function getObligations(connection: Connection, config: Config, lendingMarketPubKey) {
   const resp = await connection.getProgramAccounts(new PublicKey(config.programID), {
     commitment: connection.commitment,
@@ -124,21 +136,24 @@ export async function getObligations(connection: Connection, config: Config, len
 }
 
 export async function getReserves(connection: Connection, config: Config, lendingMarketPubKey) {
-  const resp = await connection.getProgramAccounts(new PublicKey(config.programID), {
-    commitment: connection.commitment,
-    filters: [
-      {
-        memcmp: {
-          offset: 10,
-          bytes: lendingMarketPubKey.toBase58(),
+  const getProgramAccountsFn = async () => {
+    return await connection.getProgramAccounts(new PublicKey(config.programID), {
+      commitment: connection.commitment,
+      filters: [
+        {
+          memcmp: {
+            offset: 10,
+            bytes: lendingMarketPubKey.toBase58(),
+          },
         },
-      },
-      {
-        dataSize: RESERVE_LEN,
-      },
-    ],
-    encoding: 'base64',
-  });
+        {
+          dataSize: RESERVE_LEN,
+        },
+      ],
+      encoding: 'base64',
+    });
+  }
+  const resp = await retry(getProgramAccountsFn, 3);
 
   return resp.map((account) => ReserveParser(account.pubkey, account.account));
 }
